@@ -1,0 +1,208 @@
+local savedCFrame = nil
+local kickAllRequestedAt = 0
+local kickAllInProgress = false
+local kickAllLastSitState = false
+local kickAllShouldRemount = false
+local kickAllHasSatThisRequest = false
+local KickAllProcessed = {}
+
+-- 前方宣言：ensureBlobmanAndSit_KickAll の内部から参照するため先に宣言する
+local doKickAllSequence
+
+local function ensureBlobmanAndSit_KickAll()
+if not kickAllShouldRemount then return nil end
+
+local hum = getLocalHum()
+local root = getLocalRoot()
+if not (hum and root) then return nil end
+
+if hum.SeatPart then
+local preBlob = getBlobmanFromSeatPart(hum.SeatPart)
+if preBlob then
+AuraBlobman = preBlob
+return AuraBlobman
+end
+end
+
+if not (AuraBlobman and AuraBlobman.Parent) then
+local menu = service.ReplicatedStorage:FindFirstChild("MenuToys")
+local spawnRF = menu and menu:FindFirstChild("SpawnToyRemoteFunction")
+if not spawnRF then return nil end
+
+spawnRF:InvokeServer(
+"CreatureBlobman",
+root.CFrame * CFrame.new(0,0,-5),
+Vector3.new(0,-15.716,0)
+)
+
+local inv = getInv()
+if inv then
+for _, v in ipairs(inv:GetChildren()) do
+if v.Name == "CreatureBlobman" then
+AuraBlobman = v
+break
+end
+end
+end
+end
+
+local seat = AuraBlobman and AuraBlobman:FindFirstChildOfClass("VehicleSeat")
+
+
+if seat and not hum.Sit and not kickAllHasSatThisRequest then
+kickAllHasSatThisRequest = true
+seat:Sit(hum)
+
+-- 座った瞬間に開始
+kickAllRequestedAt = 0
+task.defer(doKickAllSequence)
+end
+
+return AuraBlobman
+end
+
+
+doKickAllSequence = function()
+if kickAllInProgress then return end
+kickAllInProgress = true
+KickAllProcessed = {}
+
+local hum = getLocalHum()
+local root = getLocalRoot()
+if not (hum and root and AuraBlobman and hum.Sit) then
+kickAllInProgress = false
+kickAllRequestedAt = 0
+kickAllLastSitState = false
+kickAllShouldRemount = false
+kickAllHasSatThisRequest = false
+return
+end
+
+while true do
+local didProcess = false
+local players = service.Players:GetPlayers()
+
+for i = 1, #players do
+local player = players[i]
+if shouldProcessPlayer(player) and not KickAllProcessed[player] then
+KickAllProcessed[player] = true
+local char = player.Character
+if char then
+local targetRoot = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso")
+if targetRoot then
+root = getLocalRoot()
+if not root then break end
+
+root.CFrame = targetRoot.CFrame
+task.wait(0.07)
+
+blobGrab(AuraBlobman, getLocalRoot(), "Left")
+task.wait(0.01)
+
+for i = 1, 5 do
+SetNetworkOwner(targetRoot)
+task.wait()
+end
+
+targetRoot.CFrame = targetRoot.CFrame + Vector3.new(0, 29, 0)
+
+
+
+ungrab(targetRoot)
+task.wait(0.01)
+
+blobGrab(AuraBlobman, targetRoot, "Left")
+task.wait(0.01)
+
+didProcess = true
+end
+end
+end
+end
+
+if not didProcess then
+break
+end
+end
+
+if savedCFrame then
+for i = 1, 30 do
+local r = getLocalRoot()
+if r then
+r.CFrame = savedCFrame
+break
+end
+task.wait(0.004)
+end
+savedCFrame = nil
+end
+
+destroyBlobman()
+kickAllInProgress = false
+kickAllRequestedAt = 0
+kickAllLastSitState = false
+kickAllShouldRemount = false
+kickAllHasSatThisRequest = false
+KickAllProcessed = {}
+end
+
+
+
+service.RunService.Heartbeat:Connect(function()
+if kickAllRequestedAt == 0 then return end
+if kickAllInProgress then return end
+
+if os.clock() - kickAllRequestedAt > 0.8 then
+kickAllRequestedAt = 0
+kickAllLastSitState = false
+kickAllShouldRemount = false
+kickAllHasSatThisRequest = false
+return
+end
+
+ensureBlobmanAndSit_KickAll()
+
+local hum = getLocalHum()
+local currentSit = hum and hum.Sit or false
+
+-- 座った瞬間に即開始（遅延削除）
+if currentSit and not kickAllLastSitState then
+kickAllRequestedAt = 0
+task.defer(doKickAllSequence)
+end
+
+kickAllLastSitState = currentSit
+end)
+
+
+BlobmanTab:AddButton({
+Name = "Kick All",
+Callback = function()
+if kickAllInProgress then return end
+
+local hum = getLocalHum()
+local root = getLocalRoot()
+if not (hum and root) then return end
+
+savedCFrame = root.CFrame
+
+if hum.SeatPart then
+local preBlob = getBlobmanFromSeatPart(hum.SeatPart)
+if preBlob then
+AuraBlobman = preBlob
+kickAllRequestedAt = 0
+kickAllLastSitState = hum.Sit or false
+kickAllShouldRemount = false
+kickAllHasSatThisRequest = false
+doKickAllSequence()
+return
+end
+end
+
+kickAllRequestedAt = os.clock()
+kickAllLastSitState = hum.Sit or false
+kickAllShouldRemount = true
+kickAllHasSatThisRequest = false
+end
+})
+end
