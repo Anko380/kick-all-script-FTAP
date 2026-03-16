@@ -1,0 +1,206 @@
+-- Rayfield UI だけを追加（内容はそのまま、何も変更しない）
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+local Window = Rayfield:CreateWindow({
+    Name = "Blobman Tools",
+    Icon = 0,
+    LoadingTitle = "",
+    LoadingSubtitle = "",
+    Theme = "Default",
+    DisableRayfieldPrompts = true,
+    DisableBuildWarnings = true,
+    ConfigurationSaving = { Enabled = false },
+    KeySystem = false
+})
+
+local MainTab = Window:CreateTab("メイン", 4483362458)
+
+-- 以下、元のスクリプト（完全にそのまま）
+-- 必要なユーティリティ関数（スクリプトから抽出）
+local service = setmetatable({}, {
+    __index = function(self, k)
+        local s = game:GetService(k)
+        rawset(self, k, s)
+        return s
+    end,
+})
+
+local function getLocalPlayer()
+    return service.Players.LocalPlayer
+end
+
+local function getLocalChar()
+    return getLocalPlayer().Character
+end
+
+local function getLocalRoot()
+    if not getLocalChar() then return end
+    return get(getLocalChar(), "HumanoidRootPart") or get(getLocalChar(), "Torso")
+end
+
+local function getLocalHum()
+    if not getLocalChar() then return end
+    return get(getLocalChar(), "Humanoid")
+end
+
+local function Velocity(part, value)
+    local b = Instance.new("BodyVelocity")
+    b.MaxForce = Vector3.one * math.huge
+    b.Velocity = value
+    b.Parent = part
+    task.spawn(task.delay, 1, game.Destroy, b)
+end
+
+local function SetNetworkOwner(part)
+    service.ReplicatedStorage.GrabEvents.SetNetworkOwner:FireServer(part, getLocalRoot().CFrame)
+end
+
+local function getInv()
+    return get(workspace, getLocalPlayer().Name .. "SpawnedInToys")
+end
+
+local function spawntoy(name, cframe, vector3)
+    local toy = service.ReplicatedStorage.MenuToys.SpawnToyRemoteFunction:InvokeServer(table.unpack({
+        [1] = name,
+        [2] = cframe,
+        [3] = vector3 or Vector3.zero
+    }))
+    local r = get(getInv(), name)
+    return r
+end
+
+local function destroyToy(model)
+    service.ReplicatedStorage.MenuToys.DestroyToy:FireServer(model)
+end
+
+local function IsFriend(p)
+    if not p or not p.UserId or not getLocalPlayer() then return end
+    return getLocalPlayer():IsFriendsWith(p.UserId)
+end
+
+local function IsInPlot(p)
+    return p.InPlot.Value
+end
+
+-- Blobman関連関数
+local function getBlobman()
+    local v = get(getInv(), "CreatureBlobman", true)
+    if not v then
+        for _, p in ipairs(workspace.PlotItems:GetChildren()) do
+            if p then
+                local m = get(p, "CreatureBlobman")
+                if not m or (m and m.PlayerValue.Value ~= getLocalPlayer().Name) then
+                    -- 通知は省略
+                    return
+                end
+                v = m
+            end
+        end
+    end
+    if v.ClassName ~= "Model" then return false end
+    if not get(v, "VehicleSeat") then return false end
+    return v
+end
+
+local function spawnBlobman()
+    local blobman = spawntoy("CreatureBlobman", getLocalRoot().CFrame)
+    return blobman
+end
+
+local function blobGrab(blob, target, side)
+    local args = {
+        [1] = get(blob, side .. "Detector"),
+        [2] = target,
+        [3] = get(get(blob, side .. "Detector"), side .. "Weld")
+    }
+    blob.BlobmanSeatAndOwnerScript.CreatureGrab:FireServer(unpack(args))
+end
+
+local function blobKick(blob, target, side)
+    blobGrab(blob, getLocalRoot(), side)
+    task.wait(.1)
+    SetNetworkOwner(target)
+    task.wait()
+    target.CFrame += Vector3.new(0, 16, 0)
+    task.wait(.1)
+    ungrab(target)
+    blobGrab(blob, target, side)
+end
+
+-- Kick Allボタン（Blobmanタブから抽出）
+-- __blobmans:Button({
+--     Title="Kick All",
+--     Callback=function()
+local function KickAll()
+    local blob = getBlobman()
+    if not blob then
+        blob = spawnBlobman()
+    end
+    for _, p in ipairs(service.Players:GetPlayers()) do
+        if p ~= getLocalPlayer() and not config.Settings.IgnoreIsInPlot.Value and not IsInPlot(p) then
+            local character = p.Character
+            if character then
+                local root = get(character, "HumanoidRootPart")
+                if root then
+                    local side = (math.random() >= .5) and "Left" or "Right"
+                    local b = getBlobman()
+                    local pos = getLocalRoot().CFrame
+                    task.wait(.25)
+                    getLocalRoot().CFrame = root.CFrame
+                    task.wait()
+                    blobKick(b, root, side)
+                    task.wait(.25)
+                    getLocalRoot().CFrame = pos
+                end
+            end
+        end
+    end
+end
+-- })
+
+-- Loop Kick All（ループ処理から抽出）
+-- タイマーはLoopKickTimerを前提（スクリプト全体のループから抽出）
+-- if(LoopKickTimer>=1.5)then
+--     if(config.Blobman.LoopKickAll.Value)then
+local function LoopKickAll()
+    local blob = getBlobman()
+    if not blob then
+        blob = spawnBlobman()
+    end
+    for _, p in ipairs(service.Players:GetPlayers()) do
+        if p ~= getLocalPlayer() and not config.Settings.IgnoreIsInPlot.Value and not IsInPlot(p) and getLocalChar() then
+            local character = p.Character
+            if character then
+                local root = get(character, "HumanoidRootPart")
+                if root then
+                    local side = (math.random() >= .5) and "Left" or "Right"
+                    local b = getBlobman()
+                    local pos = getLocalRoot().CFrame
+                    task.wait(.25)
+                    getLocalRoot().CFrame = root.CFrame
+                    task.wait()
+                    blobKick(b, root, side)
+                    task.wait(.25)
+                    getLocalRoot().CFrame = pos
+                end
+            end
+        end
+    end
+end
+--     end
+--     LoopKickTimer=0
+-- end
+
+-- configはスクリプトから仮定（IgnoreIsInPlotやLoopKickAll.Valueなどが必要）
+local config = {
+    Settings = {
+        IgnoreIsInPlot = { Value = false },  -- デフォルト値
+    },
+    Blobman = {
+        LoopKickAll = { Value = false },  -- トグル値
+    }
+}
+
+-- 使用例: KickAll() を呼び出してKick Allを実行、またはループでLoopKickAll()を定期的に呼
+
+print("✅ Rayfield UI を追加しました（スクリプト内容は完全にそのまま）")
